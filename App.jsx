@@ -21,6 +21,7 @@ const STATUS_STYLE = {
 
 export default function App() {
 
+  // ================= LOGIN =================
   const [user, setUser] = useState(null);
   const [login, setLogin] = useState("");
   const [haslo, setHaslo] = useState("");
@@ -36,8 +37,10 @@ export default function App() {
 
   const czyAdmin = user?.role === "admin";
 
+  // ================= PANEL =================
   const [zakladka, setZakladka] = useState("kalkulator");
 
+  // ================= CENY =================
   const [ceny, setCeny] = useState({
     maszynowa: 7,
     reczna: 10,
@@ -46,6 +49,16 @@ export default function App() {
     wyjazd: 150,
   });
 
+  useEffect(() => {
+    const z = localStorage.getItem("ceny");
+    if (z) setCeny(JSON.parse(z));
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem("ceny", JSON.stringify(ceny));
+  }, [ceny]);
+
+  // ================= ZLECENIA =================
   const [zlecenia, setZlecenia] = useState([]);
   const [historia, setHistoria] = useState([]);
 
@@ -65,7 +78,25 @@ export default function App() {
     localStorage.setItem("historia", JSON.stringify(historia));
   }, [historia]);
 
-  const [formularz, setFormularz] = useState({
+  // 🔔 POWIADOMIENIE O DZISIEJSZYCH WIZYTACH
+  useEffect(() => {
+    const dzis = new Date().toISOString().slice(0, 10);
+
+    const dzisiejsze = zlecenia.filter(
+      (z) =>
+        z.dataWizyty &&
+        z.dataWizyty.startsWith(dzis)
+    );
+
+    if (dzisiejsze.length > 0) {
+      setTimeout(() => {
+        alert(`📅 Masz dziś ${dzisiejsze.length} wizyt`);
+      }, 500);
+    }
+  }, [zlecenia]);
+
+  // ================= FORMULARZ =================
+  const pusty = {
     klient: "",
     adres: "",
     telefon: "",
@@ -73,15 +104,16 @@ export default function App() {
     maszynowa: "",
     reczna: "",
     punkty: "",
-  });
+  };
 
+  const [formularz, setFormularz] = useState(pusty);
   const [km, setKm] = useState("");
   const [eta, setEta] = useState("");
   const [edycjaId, setEdycjaId] = useState(null);
 
   const licz = (v) => Number(v) || 0;
 
-  // 🔧 FIX: poprawione fetch (BACKTICKI)
+  // ================= GEO =================
   const pobierzGeo = async (adres) => {
     try {
       const r = await fetch(
@@ -98,7 +130,6 @@ export default function App() {
 
   const policzKm = (a, b) => {
     const R = 6371;
-
     const dLat = ((b.lat - a.lat) * Math.PI) / 180;
     const dLon = ((b.lon - a.lon) * Math.PI) / 180;
 
@@ -128,6 +159,7 @@ export default function App() {
     }
   };
 
+  // ================= AUTO KM =================
   useEffect(() => {
     if (!formularz.adres) {
       setKm("");
@@ -148,6 +180,18 @@ export default function App() {
     return () => clearTimeout(t);
   }, [formularz.adres]);
 
+  // ================= NUMER ZLECENIA =================
+  const numerZlecenia = () => {
+    if (!zlecenia.length) return 1;
+
+    const max = Math.max(
+      ...zlecenia.map((z) => z.numer || 0)
+    );
+
+    return max + 1;
+  };
+
+  // ================= SUMA =================
   const suma = useMemo(() => {
     const baza =
       licz(formularz.maszynowa) * ceny.maszynowa +
@@ -158,50 +202,57 @@ export default function App() {
     return baza + (baza > 0 ? ceny.wyjazd : 0);
   }, [formularz, km, ceny]);
 
-  const zapisz = () => {
-    if (!formularz.klient) return alert("Podaj klienta");
+  const id = () =>
+    crypto?.randomUUID?.() || String(Date.now());
 
-    const istnieje = zlecenia.find((o) => o.id === edycjaId);
+  // ================= ZAPIS =================
+  const zapisz = () => {
+    if (!formularz.klient)
+      return alert("Podaj klienta");
+
+    const istnieje =
+      zlecenia.find((o) => o.id === edycjaId);
 
     const nowe = {
-      id: edycjaId || crypto.randomUUID(),
+      id: edycjaId || id(),
+      numer: istnieje?.numer || numerZlecenia(),
+
       ...formularz,
       km,
       eta,
       suma,
+
       status: istnieje?.status || "Nowe",
       data: new Date().toISOString(),
     };
 
-    setZlecenia((p) =>
-      edycjaId
-        ? p.map((o) => (o.id === edycjaId ? nowe : o))
-        : [nowe, ...p]
-    );
-
-    setFormularz({
-      klient: "",
-      adres: "",
-      telefon: "",
-      dataWizyty: "",
-      maszynowa: "",
-      reczna: "",
-      punkty: "",
+    setZlecenia((p) => {
+      if (edycjaId) {
+        return p.map((o) =>
+          o.id === edycjaId ? nowe : o
+        );
+      }
+      return [nowe, ...p];
     });
 
+    setFormularz(pusty);
     setKm("");
     setEta("");
     setEdycjaId(null);
     setZakladka("zlecenia");
   };
 
+  // ================= STATUS =================
   const zmienStatus = (id, status) => {
     setZlecenia((p) => {
       const znalezione = p.find((o) => o.id === id);
 
       if (status === "Zakończone") {
         setHistoria((h) => [
-          { ...znalezione, dataZakonczenia: new Date().toISOString() },
+          {
+            ...znalezione,
+            dataZakonczenia: new Date().toISOString(),
+          },
           ...h,
         ]);
 
@@ -224,21 +275,25 @@ export default function App() {
 
   const usun = (id) => {
     if (confirm("Usunąć zlecenie?")) {
-      setZlecenia((p) => p.filter((o) => o.id !== id));
+      setZlecenia((p) =>
+        p.filter((o) => o.id !== id)
+      );
     }
   };
 
+  // ================= LOGIN =================
   if (!user) {
     return (
       <div className="h-screen flex items-center justify-center">
         <div className="border p-6 w-80 space-y-3">
           <input className="border p-2 w-full" placeholder="Login"
-            value={login} onChange={(e) => setLogin(e.target.value)} />
-
-          <input className="border p-2 w-full" type="password"
-            placeholder="Hasło" value={haslo}
-            onChange={(e) => setHaslo(e.target.value)} />
-
+            value={login}
+            onChange={(e) => setLogin(e.target.value)}
+          />
+          <input className="border p-2 w-full" type="password" placeholder="Hasło"
+            value={haslo}
+            onChange={(e) => setHaslo(e.target.value)}
+          />
           <button onClick={zaloguj}
             className="bg-blue-600 text-white w-full p-2">
             Zaloguj
@@ -248,22 +303,31 @@ export default function App() {
     );
   }
 
-  const zleceniaSorted = [...zlecenia].sort(
-    (a, b) => new Date(a.dataWizyty || 0) - new Date(b.dataWizyty || 0)
-  );
+  // ================= UI =================
+  const zleceniaPosortowane = [...zlecenia]
+    .sort((a, b) =>
+      new Date(a.dataWizyty || 0) -
+      new Date(b.dataWizyty || 0)
+    );
 
   return (
     <div className="p-4 max-w-5xl mx-auto">
 
-      <h1 className="text-3xl font-bold">Serwis Robotów</h1>
+      <h1 className="text-3xl font-bold">
+        Serwis Robotów
+      </h1>
 
+      {/* MENU */}
       <div className="flex gap-2 my-4">
         <button onClick={() => setZakladka("kalkulator")}>Kalkulator</button>
         <button onClick={() => setZakladka("zlecenia")}>Zlecenia</button>
         <button onClick={() => setZakladka("historia")}>Historia</button>
-        {czyAdmin && <button onClick={() => setZakladka("admin")}>Admin</button>}
+        {czyAdmin && (
+          <button onClick={() => setZakladka("admin")}>Admin</button>
+        )}
       </div>
 
+      {/* KALKULATOR */}
       {zakladka === "kalkulator" && (
         <div className="border p-4 space-y-2">
           <input placeholder="Klient" value={formularz.klient}
@@ -278,38 +342,69 @@ export default function App() {
           <div>🚗 {km} km | 🕒 {eta} min</div>
           <div className="font-bold">{suma.toFixed(2)} zł</div>
 
-          <button onClick={zapisz} className="bg-green-600 text-white p-2">
+          <button onClick={zapisz}
+            className="bg-green-600 text-white p-2">
             Zapisz
           </button>
         </div>
       )}
 
+      {/* ZLECENIA */}
       {zakladka === "zlecenia" && (
-        <div className="space-y-3">
-          {zleceniaSorted.map((o) => (
-            <div key={o.id} className="border p-3">
-              <div className="font-bold">{o.klient}</div>
-              <div>📞 {o.telefon}</div>
+        <div className="space-y-4">
 
-              <div className={`px-2 inline-block ${STATUS_STYLE[o.status]}`}>
-                {o.status}
+          {zleceniaPosortowane.map((o) => (
+            <div key={o.id}
+              className="border rounded-xl p-4 shadow bg-white space-y-2">
+
+              <div className="flex justify-between">
+                <div className="font-bold">
+                  #{o.numer} — {o.klient}
+                </div>
+
+                <div className={`px-2 py-1 rounded ${STATUS_STYLE[o.status]}`}>
+                  {o.status}
+                </div>
               </div>
 
-              <div>💰 {o.suma} zł</div>
+              <div>
+                📞 {o.telefon}
+                <a href={`tel:${o.telefon}`}
+                  className="ml-2 text-blue-600 underline">
+                  Zadzwoń
+                </a>
+              </div>
 
-              <button onClick={() => zmienStatus(o.id, "Zakończone")}>Zakończ</button>
-              <button onClick={() => edytuj(o)}>Edytuj</button>
-              <button onClick={() => usun(o.id)}>Usuń</button>
+              <div>
+                📅 {o.dataWizyty
+                  ? new Date(o.dataWizyty).toLocaleString()
+                  : "-"}
+              </div>
+
+              <div>🚗 {o.km} km | 🕒 {o.eta} min</div>
+              <div className="font-bold">💰 {o.suma} zł</div>
+
+              <div className="flex gap-2">
+                <button onClick={() => zmienStatus(o.id, "Zakończone")}>
+                  Zakończ
+                </button>
+                <button onClick={() => edytuj(o)}>Edytuj</button>
+                <button onClick={() => usun(o.id)}>Usuń</button>
+              </div>
+
             </div>
           ))}
+
         </div>
       )}
 
+      {/* HISTORIA */}
       {zakladka === "historia" && (
-        <div>
+        <div className="space-y-3">
           {historia.map((o) => (
-            <div key={o.id} className="border p-2">
-              {o.klient} — {o.suma} zł
+            <div key={o.id} className="border p-3 bg-gray-50">
+              #{o.numer} — {o.klient}
+              <div>💰 {o.suma} zł</div>
             </div>
           ))}
         </div>

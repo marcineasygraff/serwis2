@@ -156,7 +156,8 @@ export default function App() {
       const geo = await pobierzGeo(formularz.adres);
       if (!geo) return;
 
-      setKm(policzKm(BASE, geo).toFixed(1));
+      
+      setKm(Number(policzKm(BASE, geo).toFixed(1)));
 
       const e = await policzETA(BASE, geo);
       if (e !== null) setEta(e);
